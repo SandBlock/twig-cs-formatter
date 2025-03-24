@@ -45,6 +45,9 @@ export function activate(context: vscode.ExtensionContext) {
                 
                 // Apply our custom formatting to twig components
                 formatted = formatTwigComponents(formatted);
+                
+                // Post-process to fix merge operations
+                formatted = postProcessMergeOperations(formatted);
 
                 // Return the formatting edits
                 const range = new vscode.Range(
@@ -76,6 +79,50 @@ export function activate(context: vscode.ExtensionContext) {
     console.log('Twig CS Formatter is now active!');
 }
 
+/**
+ * Post-processes the formatted text to fix merge operations
+ * @param text The formatted text
+ * @returns The text with fixed merge operations
+ */
+function postProcessMergeOperations(text: string): string {
+    // Find merge operations in set statements
+    // This will match {% set x = y|merge({...}) %} pattern
+    const mergeSetPattern: RegExp = /({% *set [^=]+=\s*[^|]+\|\s*merge\s*\(\s*\{)([^}]*?)(\}\s*\)[^%]*%})/g;
+    
+    return text.replace(mergeSetPattern, (match: string, prefix: string, content: string, suffix: string): string => {
+        // Get the indentation level
+        const matchIndex: number = text.indexOf(match);
+        const lineStart: number = text.lastIndexOf('\n', matchIndex) + 1;
+        const baseIndent: string = text.substring(lineStart, matchIndex);
+        
+        // Process properties to ensure they have quotes and are properly formatted
+        const properties: string[] = content.split(',')
+            .map((prop: string): string => prop.trim())
+            .filter((prop: string): boolean => Boolean(prop))
+            .map((prop: string): string => {
+                // Add quotes to property names if needed
+                const parts: string[] = prop.split(':').map((p: string): string => p.trim());
+                if (parts.length < 2) return prop;
+                
+                const propName: string = parts[0];
+                const propValue: string = parts.slice(1).join(':').trim();
+                
+                if (!propName.startsWith("'") && !propName.startsWith('"')) {
+                    return `'${propName}': ${propValue}`;
+                }
+                
+                return prop;
+            });
+        
+        // Always format set statements with merge nicely with proper indentation
+        const propIndent: string = baseIndent + '        '; // 8 spaces
+        const closingIndent: string = baseIndent + '    ';  // 4 spaces
+        
+        // Format with proper indentation even if it has only one property
+        return `${prefix}\n${propIndent}${properties.join(`,\n${propIndent}`)}\n${closingIndent}${suffix}`;
+    });
+}
+
 // Function to preserve single-line HTML elements
 function preserveSingleLineElements(text: string): { text: string, placeholders: Map<string, string> } {
     const placeholders = new Map<string, string>();
@@ -85,7 +132,7 @@ function preserveSingleLineElements(text: string): { text: string, placeholders:
     const singleLinePattern = /<([a-zA-Z][a-zA-Z0-9]*)([^>]*)>([^<]+)<\/\1>/g;
     
     // Replace them with placeholders
-    const processedText = text.replace(singleLinePattern, (match, tagName, attributes, content) => {
+    const processedText = text.replace(singleLinePattern, (match: string, tagName: string, attributes: string, content: string): string => {
         // Skip if it's a twig component or exceeds print width
         if (tagName.startsWith('twig:') || match.length > printWidth) {
             return match;
@@ -103,7 +150,7 @@ function preserveSingleLineElements(text: string): { text: string, placeholders:
 
 // Function to restore single-line HTML elements
 function restoreSingleLineElements(text: string, placeholders: Map<string, string>): string {
-    let result = text;
+    let result: string = text;
     
     // Replace all placeholders with their original content
     for (const [placeholder, original] of placeholders.entries()) {
@@ -115,31 +162,31 @@ function restoreSingleLineElements(text: string, placeholders: Map<string, strin
 
 // Function to format Twig components
 function formatTwigComponents(text: string): string {
-    const lines = text.split('\n');
+    const lines: string[] = text.split('\n');
     const resultLines: string[] = [];
     
     // Process line by line to maintain proper indentation
     for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
+        const line: string = lines[i];
         
         // Check if this line contains the start of a twig component
         if (line.trim().startsWith('<twig:') && line.includes('=')) {
             // Get the leading whitespace/indentation
-            const indentation = line.match(/^\s*/)?.[0] || '';
+            const indentation: string = line.match(/^\s*/)?.[0] || '';
             
             // Extract the component name
-            const componentMatch = line.match(/<(twig:[A-Za-z0-9:]+)/);
+            const componentMatch: RegExpMatchArray | null = line.match(/<(twig:[A-Za-z0-9:]+)/);
             if (!componentMatch) {
                 resultLines.push(line);
                 continue;
             }
             
-            const componentName = componentMatch[1];
+            const componentName: string = componentMatch[1];
             
             // Extract attributes from this line and possibly subsequent lines
             const attributes: string[] = [];
-            let currentLine = line.trim();
-            let j = i;
+            let currentLine: string = line.trim();
+            let j: number = i;
             
             // Find the closing of the component tag
             while (j < lines.length && !currentLine.includes('/>') && !currentLine.endsWith('>')) {
@@ -150,21 +197,21 @@ function formatTwigComponents(text: string): string {
             }
             
             // Extract all attributes
-            const allContent = lines.slice(i, j + 1).join(' ');
-            const attrPattern = /(\w+)=(?:"([^"]*?)"|'([^']*?)'|(\{\{[\s\S]*?\}\}))/g;
-            let attrMatch;
+            const allContent: string = lines.slice(i, j + 1).join(' ');
+            const attrPattern: RegExp = /(\w+)=(?:"([^"]*?)"|'([^']*?)'|(\{\{[\s\S]*?\}\}))/g;
+            let attrMatch: RegExpExecArray | null;
             
             while ((attrMatch = attrPattern.exec(allContent)) !== null) {
-                const attrName = attrMatch[1];
-                let attrValue = attrMatch[2] || attrMatch[3] || attrMatch[4];
+                const attrName: string = attrMatch[1];
+                let attrValue: string = attrMatch[2] || attrMatch[3] || attrMatch[4];
                 
                 // Clean up Twig expressions in attribute values
                 if (attrValue && attrValue.includes('{{')) {
                     // Extract the twig expression
-                    const twigMatch = attrValue.match(/\{\{([\s\S]*?)\}\}/);
+                    const twigMatch: RegExpMatchArray | null = attrValue.match(/\{\{([\s\S]*?)\}\}/);
                     if (twigMatch) {
                         // Clean up whitespace in the Twig expression
-                        const cleanExpr = twigMatch[1].trim().replace(/\s+/g, ' ');
+                        const cleanExpr: string = twigMatch[1].trim().replace(/\s+/g, ' ');
                         attrValue = `{{ ${cleanExpr} }}`;
                     }
                 }
@@ -184,7 +231,7 @@ function formatTwigComponents(text: string): string {
                 }
                 
                 // Add the closing tag
-                const isClosing = allContent.includes('/>');
+                const isClosing: boolean = allContent.includes('/>');
                 resultLines.push(`${indentation}${isClosing ? '/>' : '>'}`);
                 
                 // Skip the lines we've processed
