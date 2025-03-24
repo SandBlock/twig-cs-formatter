@@ -20,6 +20,9 @@ export function activate(context: vscode.ExtensionContext) {
                 const options = await prettier.resolveConfig(workspacePath) || {};
                 const pluginPath = require.resolve('prettier-plugin-twig-melody');
 
+                // Preserve single-line HTML elements
+                const preservedSingleLines = preserveSingleLineElements(text);
+                
                 // Merge with our default options
                 const formatOptions: Options = {
                     ...options,
@@ -35,7 +38,10 @@ export function activate(context: vscode.ExtensionContext) {
                 };
 
                 // Format the document using prettier
-                let formatted = await prettier.format(text, formatOptions);
+                let formatted = await prettier.format(preservedSingleLines.text, formatOptions);
+                
+                // Restore preserved single-line elements
+                formatted = restoreSingleLineElements(formatted, preservedSingleLines.placeholders);
                 
                 // Apply our custom formatting to twig components
                 formatted = formatTwigComponents(formatted);
@@ -68,6 +74,43 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(formatCommand);
 
     console.log('Twig CS Formatter is now active!');
+}
+
+// Function to preserve single-line HTML elements
+function preserveSingleLineElements(text: string): { text: string, placeholders: Map<string, string> } {
+    const placeholders = new Map<string, string>();
+    const printWidth = 120; // Match the printWidth from the options
+    
+    // Find single-line HTML elements with content
+    const singleLinePattern = /<([a-zA-Z][a-zA-Z0-9]*)([^>]*)>([^<]+)<\/\1>/g;
+    
+    // Replace them with placeholders
+    const processedText = text.replace(singleLinePattern, (match, tagName, attributes, content) => {
+        // Skip if it's a twig component or exceeds print width
+        if (tagName.startsWith('twig:') || match.length > printWidth) {
+            return match;
+        }
+        
+        // Generate a unique placeholder
+        const placeholder = `__HTML_ELEMENT_${Math.random().toString(36).substring(2, 10)}__`;
+        placeholders.set(placeholder, match);
+        
+        return placeholder;
+    });
+    
+    return { text: processedText, placeholders };
+}
+
+// Function to restore single-line HTML elements
+function restoreSingleLineElements(text: string, placeholders: Map<string, string>): string {
+    let result = text;
+    
+    // Replace all placeholders with their original content
+    for (const [placeholder, original] of placeholders.entries()) {
+        result = result.replace(placeholder, original);
+    }
+    
+    return result;
 }
 
 // Function to format Twig components
