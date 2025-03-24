@@ -41,7 +41,7 @@ Example formatting:
 ## Requirements
 
 The extension requires:
-- Visual Studio Code version 1.98.0 or higher
+- Visual Studio Code version 1.96.0 or higher
 - Node.js and npm installed on your system
 
 ## Installation
@@ -102,7 +102,7 @@ Initial release of Twig CS Formatter:
 ## Contributing
 
 Found a bug or want to contribute? Visit our repository:
-[GitHub Repository](https://github.com/yourusername/twig-cs-formatter)
+[GitHub Repository](https://github.com/SandBlock/twig-cs-formatter)
 
 ## License
 

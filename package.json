@@ -6,11 +6,12 @@
   "version": "0.0.1",
   "repository": {
     "type": "git",
-    "url": "https://github.com/SandBlock/vscode-rsync-extended"
+    "url": "https://github.com/SandBlock/twig-cs-formatter"
   },
   "engines": {
-    "vscode": "^1.98.0"
+    "vscode": "^1.96.0"
   },
+  "type": "commonjs",
   "categories": [
     "Formatters"
   ],
@@ -41,12 +42,12 @@
     "test": "vscode-test"
   },
   "dependencies": {
-    "prettier": "^3.2.5",
-    "prettier-plugin-twig-melody": "^0.4.6"
+    "prettier": "2.8.8",
+    "prettier-plugin-twig-melody": "0.4.6"
   },
   "devDependencies": {
-    "@types/prettier": "^3.0.0",
-    "@types/vscode": "^1.98.0",
+    "@types/prettier": "^2.7.3",
+    "@types/vscode": "^1.96.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
     "@typescript-eslint/eslint-plugin": "^8.25.0",
