@@ -188,11 +188,15 @@ function processPathParameters(text: string): string {
             return match;
         }
         
+        // Extract the path function and route name without spaces
+        const cleanPrefix = prefix.replace(/path\s*\(\s*/, "path(");
+        const cleanSuffix = suffix.replace(/\s*\)/, ")");
+        
         // Standard indentation for path parameters
         const propIndent: string = baseIndent + '    ';  // 4 spaces from base attribute indent
         
-        // Format with proper indentation
-        return `${prefix.trim()}\n${propIndent}${properties.join(`,\n${propIndent}`)}\n${baseIndent}${suffix.trim()}`;
+        // Format with proper indentation and no extra spaces
+        return `${cleanPrefix}\n${propIndent}${properties.join(`,\n${propIndent}`)}\n${baseIndent}${cleanSuffix}`;
     });
 }
 
