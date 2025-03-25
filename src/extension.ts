@@ -12,6 +12,9 @@ export function activate(context: vscode.ExtensionContext) {
             try {
                 const text = document.getText();
                 
+                // Preserve all comments before formatting
+                const preservedComments = preserveComments(text);
+                
                 // Get workspace folder path
                 const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
                 const workspacePath = workspaceFolder ? workspaceFolder.uri.fsPath : path.dirname(document.uri.fsPath);
@@ -19,9 +22,9 @@ export function activate(context: vscode.ExtensionContext) {
                 // Configure Prettier
                 const options = await prettier.resolveConfig(workspacePath) || {};
                 const pluginPath = require.resolve('prettier-plugin-twig-melody');
-
+                
                 // Preserve single-line HTML elements
-                const preservedSingleLines = preserveSingleLineElements(text);
+                const preservedSingleLines = preserveSingleLineElements(preservedComments.text);
                 
                 // Merge with our default options
                 const formatOptions: Options = {
@@ -46,8 +49,12 @@ export function activate(context: vscode.ExtensionContext) {
                 // Apply our custom formatting to twig components
                 formatted = formatTwigComponents(formatted);
                 
-                // Post-process to fix merge operations
+                // Post-process to fix merge operations and path parameters
                 formatted = postProcessMergeOperations(formatted);
+                formatted = processPathParameters(formatted);
+                
+                // Restore comments at the very end
+                formatted = restoreComments(formatted, preservedComments.placeholders);
 
                 // Return the formatting edits
                 const range = new vscode.Range(
@@ -80,26 +87,49 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 /**
- * Post-processes the formatted text to fix merge operations and path parameters
- * @param text The formatted text
- * @returns The text with fixed merge operations and path parameters
+ * Preserves all Twig comments before formatting
+ * @param text Original text content
+ * @returns Object with the text with placeholders and a map of the original comments
  */
-function postProcessMergeOperations(text: string): string {
-    // Process the text for merge operations
-    let result = processMergeOperations(text);
+function preserveComments(text: string): { text: string, placeholders: Map<string, string> } {
+    const placeholders = new Map<string, string>();
+    const commentPattern = /\{#[\s\S]*?#\}/g;
     
-    // Process the text for path parameters
-    result = processPathParameters(result);
+    // Replace comments with placeholders
+    const processedText = text.replace(commentPattern, (match: string): string => {
+        // Generate a unique placeholder
+        const placeholder = `__TWIG_COMMENT_${Math.random().toString(36).substring(2, 15)}__`;
+        placeholders.set(placeholder, match);
+        
+        return placeholder;
+    });
+    
+    return { text: processedText, placeholders };
+}
+
+/**
+ * Restores original comments
+ * @param text Text with comment placeholders
+ * @param placeholders Map of placeholders to original comments
+ * @returns Text with original comments restored
+ */
+function restoreComments(text: string, placeholders: Map<string, string>): string {
+    let result: string = text;
+    
+    // Replace all placeholders with their original content
+    for (const [placeholder, original] of placeholders.entries()) {
+        result = result.replace(placeholder, original);
+    }
     
     return result;
 }
 
 /**
- * Processes merge operations in set statements
+ * Post-processes the formatted text to fix merge operations
  * @param text The formatted text
  * @returns The text with fixed merge operations
  */
-function processMergeOperations(text: string): string {
+function postProcessMergeOperations(text: string): string {
     // Find merge operations in set statements
     // This will match {% set x = y|merge({...}) %} pattern
     const mergeSetPattern: RegExp = /({% *set [^=]+=\s*[^|]+\|\s*merge\s*\(\s*\{)([^}]*?)(\}\s*\)[^%]*%})/g;
@@ -154,10 +184,10 @@ function processPathParameters(text: string): string {
     // Use exec to get match positions
     while ((match = pathPattern.exec(result)) !== null) {
         const fullMatch = match[0];
+        const matchPosition = match.index;
         const prefix = match[1];
         const content = match[2];
         const suffix = match[3];
-        const matchPosition = match.index;
         
         // Find the route attribute line
         const beforeMatch = result.substring(0, matchPosition);
@@ -227,7 +257,7 @@ function preserveSingleLineElements(text: string): { text: string, placeholders:
         }
         
         // Generate a unique placeholder
-        const placeholder = `__HTML_ELEMENT_${Math.random().toString(36).substring(2, 10)}__`;
+        const placeholder = `__HTML_ELEMENT_${Math.random().toString(36).substring(2, 15)}__`;
         placeholders.set(placeholder, match);
         
         return placeholder;
