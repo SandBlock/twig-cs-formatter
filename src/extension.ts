@@ -141,7 +141,7 @@ function processMergeOperations(text: string): string {
 /**
  * Processes path function parameters to format them properly
  * @param text The formatted text
- * @returns The text with fixed path parameters
+ * @returns The text with consistently formatted path parameters
  */
 function processPathParameters(text: string): string {
     // Find path function calls that have object parameters
@@ -153,35 +153,46 @@ function processPathParameters(text: string): string {
         const beforeMatch: string = text.substring(0, text.indexOf(match));
         const isInAttribute: boolean = /=\s*["']?\{\{\s*$/.test(beforeMatch.slice(-10));
         
-        // Only format if it's inside an attribute (which is usually the case for path)
+        // Only format if it's inside an attribute
         if (!isInAttribute) {
             return match;
         }
         
         // Get the indentation level of the attribute
         const lineStart: number = text.lastIndexOf('\n', text.indexOf(match)) + 1;
-        const attributeLine: string = text.substring(lineStart, text.indexOf(match) + match.length);
+        const attributeLine: string = text.substring(lineStart, text.indexOf(match));
         const attributeMatch: RegExpMatchArray | null = attributeLine.match(/^\s*/);
         const baseIndent: string = attributeMatch ? attributeMatch[0] : '';
         
         // Process properties
         const properties: string[] = content.split(',')
             .map((prop: string): string => prop.trim())
-            .filter((prop: string): boolean => Boolean(prop));
+            .filter((prop: string): boolean => Boolean(prop))
+            .map((prop: string): string => {
+                // Add quotes to property names if needed
+                const parts: string[] = prop.split(':').map((p: string): string => p.trim());
+                if (parts.length < 2) return prop;
+                
+                const propName: string = parts[0];
+                const propValue: string = parts.slice(1).join(':').trim();
+                
+                if (!propName.startsWith("'") && !propName.startsWith('"')) {
+                    return `'${propName}': ${propValue}`;
+                }
+                
+                return prop;
+            });
         
         // Format only if there are properties
         if (properties.length === 0) {
             return match;
         }
         
-        // Calculate indentation for properties and closing brace
-        // Attribute indentation + 8 spaces for properties (matches the normal attribute indentation pattern)
-        const propIndent: string = baseIndent + '        ';
-        // Attribute indentation + 4 spaces for closing brace to align with opening
-        const closingIndent: string = baseIndent + '    ';
+        // Standard indentation for path parameters
+        const propIndent: string = baseIndent + '    ';  // 4 spaces from base attribute indent
         
-        // Format with proper indentation even if it has only one property
-        return `${prefix}\n${propIndent}${properties.join(`,\n${propIndent}`)}\n${closingIndent}${suffix}`;
+        // Format with proper indentation
+        return `${prefix.trim()}\n${propIndent}${properties.join(`,\n${propIndent}`)}\n${baseIndent}${suffix.trim()}`;
     });
 }
 
