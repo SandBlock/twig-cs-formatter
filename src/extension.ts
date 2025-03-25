@@ -80,11 +80,26 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 /**
- * Post-processes the formatted text to fix merge operations
+ * Post-processes the formatted text to fix merge operations and path parameters
+ * @param text The formatted text
+ * @returns The text with fixed merge operations and path parameters
+ */
+function postProcessMergeOperations(text: string): string {
+    // Process the text for merge operations
+    let result = processMergeOperations(text);
+    
+    // Process the text for path parameters
+    result = processPathParameters(result);
+    
+    return result;
+}
+
+/**
+ * Processes merge operations in set statements
  * @param text The formatted text
  * @returns The text with fixed merge operations
  */
-function postProcessMergeOperations(text: string): string {
+function processMergeOperations(text: string): string {
     // Find merge operations in set statements
     // This will match {% set x = y|merge({...}) %} pattern
     const mergeSetPattern: RegExp = /({% *set [^=]+=\s*[^|]+\|\s*merge\s*\(\s*\{)([^}]*?)(\}\s*\)[^%]*%})/g;
@@ -117,6 +132,53 @@ function postProcessMergeOperations(text: string): string {
         // Always format set statements with merge nicely with proper indentation
         const propIndent: string = baseIndent + '        '; // 8 spaces
         const closingIndent: string = baseIndent + '    ';  // 4 spaces
+        
+        // Format with proper indentation even if it has only one property
+        return `${prefix}\n${propIndent}${properties.join(`,\n${propIndent}`)}\n${closingIndent}${suffix}`;
+    });
+}
+
+/**
+ * Processes path function parameters to format them properly
+ * @param text The formatted text
+ * @returns The text with fixed path parameters
+ */
+function processPathParameters(text: string): string {
+    // Find path function calls that have object parameters
+    // This will match path('route', {...}) pattern within an attribute
+    const pathPattern: RegExp = /(path\s*\(\s*['"][^'"]+['"]\s*,\s*\{)([^}]*?)(\}\s*\))/g;
+    
+    return text.replace(pathPattern, (match: string, prefix: string, content: string, suffix: string): string => {
+        // Determine the context - if it's inside a tag attribute
+        const beforeMatch: string = text.substring(0, text.indexOf(match));
+        const isInAttribute: boolean = /=\s*["']?\{\{\s*$/.test(beforeMatch.slice(-10));
+        
+        // Only format if it's inside an attribute (which is usually the case for path)
+        if (!isInAttribute) {
+            return match;
+        }
+        
+        // Get the indentation level of the attribute
+        const lineStart: number = text.lastIndexOf('\n', text.indexOf(match)) + 1;
+        const attributeLine: string = text.substring(lineStart, text.indexOf(match) + match.length);
+        const attributeMatch: RegExpMatchArray | null = attributeLine.match(/^\s*/);
+        const baseIndent: string = attributeMatch ? attributeMatch[0] : '';
+        
+        // Process properties
+        const properties: string[] = content.split(',')
+            .map((prop: string): string => prop.trim())
+            .filter((prop: string): boolean => Boolean(prop));
+        
+        // Format only if there are properties
+        if (properties.length === 0) {
+            return match;
+        }
+        
+        // Calculate indentation for properties and closing brace
+        // Attribute indentation + 8 spaces for properties (matches the normal attribute indentation pattern)
+        const propIndent: string = baseIndent + '        ';
+        // Attribute indentation + 4 spaces for closing brace to align with opening
+        const closingIndent: string = baseIndent + '    ';
         
         // Format with proper indentation even if it has only one property
         return `${prefix}\n${propIndent}${properties.join(`,\n${propIndent}`)}\n${closingIndent}${suffix}`;
