@@ -148,56 +148,67 @@ function processPathParameters(text: string): string {
     // This will match path('route', {...}) pattern within an attribute
     const pathPattern: RegExp = /(path\s*\(\s*['"][^'"]+['"]\s*,\s*\{)([^}]*?)(\}\s*\))/g;
     
-    return text.replace(pathPattern, (match: string, prefix: string, content: string, suffix: string): string => {
-        // Determine the context - if it's inside a tag attribute
-        const beforeMatch: string = text.substring(0, text.indexOf(match));
-        const isInAttribute: boolean = /=\s*["']?\{\{\s*$/.test(beforeMatch.slice(-10));
+    let result = text;
+    let match;
+    
+    // Use exec to get match positions
+    while ((match = pathPattern.exec(result)) !== null) {
+        const fullMatch = match[0];
+        const prefix = match[1];
+        const content = match[2];
+        const suffix = match[3];
+        const matchPosition = match.index;
         
-        // Only format if it's inside an attribute
-        if (!isInAttribute) {
-            return match;
+        // Find the route attribute line
+        const beforeMatch = result.substring(0, matchPosition);
+        const routeAttrPos = beforeMatch.lastIndexOf('route=');
+        
+        // Only proceed if we found the route attribute (this is inside an element)
+        if (routeAttrPos >= 0) {
+            // Find the start of the line containing the route attribute
+            const lineStart = beforeMatch.lastIndexOf('\n', routeAttrPos) + 1;
+            
+            // Get the indentation of the attribute line
+            const attributeIndent = beforeMatch.substring(lineStart, lineStart + (routeAttrPos - lineStart));
+            
+            // Process properties
+            const properties = content.split(',')
+                .map(prop => prop.trim())
+                .filter(prop => prop.length > 0)
+                .map(prop => {
+                    // Add quotes to property names if needed
+                    const parts = prop.split(':').map(p => p.trim());
+                    if (parts.length < 2) return prop;
+                    
+                    const propName = parts[0];
+                    const propValue = parts.slice(1).join(':').trim();
+                    
+                    if (!propName.startsWith("'") && !propName.startsWith('"')) {
+                        return `'${propName}': ${propValue}`;
+                    }
+                    
+                    return prop;
+                });
+            
+            // Clean up prefix and suffix
+            const cleanPrefix = prefix.replace(/path\s*\(\s*/, "path(");
+            const cleanSuffix = suffix.replace(/\s*\)/, ")");
+            
+            // Calculate proper indentation for parameters: attribute indent + 4 spaces
+            const paramIndent = attributeIndent + '    ';
+            
+            // Format the path parameters
+            const formattedPath = `${cleanPrefix}\n${paramIndent}${properties.join(`,\n${paramIndent}`)}\n${attributeIndent}${cleanSuffix}`;
+            
+            // Replace this match in the result
+            result = result.substring(0, matchPosition) + formattedPath + result.substring(matchPosition + fullMatch.length);
+            
+            // Update the regex position to account for the replacement
+            pathPattern.lastIndex = matchPosition + formattedPath.length;
         }
-        
-        // Get the indentation level of the attribute
-        const lineStart: number = text.lastIndexOf('\n', text.indexOf(match)) + 1;
-        const attributeLine: string = text.substring(lineStart, text.indexOf(match));
-        const attributeMatch: RegExpMatchArray | null = attributeLine.match(/^\s*/);
-        const baseIndent: string = attributeMatch ? attributeMatch[0] : '';
-        
-        // Process properties
-        const properties: string[] = content.split(',')
-            .map((prop: string): string => prop.trim())
-            .filter((prop: string): boolean => Boolean(prop))
-            .map((prop: string): string => {
-                // Add quotes to property names if needed
-                const parts: string[] = prop.split(':').map((p: string): string => p.trim());
-                if (parts.length < 2) return prop;
-                
-                const propName: string = parts[0];
-                const propValue: string = parts.slice(1).join(':').trim();
-                
-                if (!propName.startsWith("'") && !propName.startsWith('"')) {
-                    return `'${propName}': ${propValue}`;
-                }
-                
-                return prop;
-            });
-        
-        // Format only if there are properties
-        if (properties.length === 0) {
-            return match;
-        }
-        
-        // Extract the path function and route name without spaces
-        const cleanPrefix = prefix.replace(/path\s*\(\s*/, "path(");
-        const cleanSuffix = suffix.replace(/\s*\)/, ")");
-        
-        // Standard indentation for path parameters
-        const propIndent: string = baseIndent + '    ';  // 4 spaces from base attribute indent
-        
-        // Format with proper indentation and no extra spaces
-        return `${cleanPrefix}\n${propIndent}${properties.join(`,\n${propIndent}`)}\n${baseIndent}${cleanSuffix}`;
-    });
+    }
+    
+    return result;
 }
 
 // Function to preserve single-line HTML elements
